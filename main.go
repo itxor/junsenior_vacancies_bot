@@ -4,15 +4,15 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/joho/godotenv"
+	"github.com/pkg/errors"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	redis_helper "parser/helpers/redis"
 	"strconv"
-
-	"github.com/go-redis/redis/v7"
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/joho/godotenv"
 )
 
 // Vacancy ...
@@ -55,21 +55,43 @@ func init() {
 }
 
 func main() {
-	var redis := NewRedisClient()
 	db, err := sql.Open("mysql", "junsenior:junsenior@/vacancies")
-	checkErr(err)
+	if err != nil {
+		panic(err)
+	}
+
 	defer db.Close()
 
 	tx, err := db.Begin()
-	checkErr(err)
+	if err != nil {
+		panic(err)
+	}
 	defer tx.Rollback() // Игнорируется, если в последующем изменения зафиксированы через Commit
 
-	stmt, err := tx.Prepare("INSERT INTO vacancies(id, name, place, salary_from, salary_to, salary_currency, salary_gross, publiched_at, archived, url, employer_name) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
-	checkErr(err)
+	stmt, err := tx.Prepare("INSERT INTO vacancies(" +
+		"id, " +
+		"name, " +
+		"place, " +
+		"salary_from, " +
+		"salary_to, " +
+		"salary_currency, " +
+		"salary_gross, " +
+		"publiched_at, " +
+		"archived, " +
+		"url, " +
+		"employer_name" +
+		") VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+	if err != nil {
+		panic(err)
+	}
 	defer stmt.Close()
 
-	vacancies := getVacansies()
-	redis
+	lastUpdateTime := redis_helper.GetRedisTimeStamp()
+	vacancies, err := getVacansies(lastUpdateTime)
+	if err != nil {
+		panic(err)
+	}
+	redis_helper.SetRedisTimeStamp()
 
 	for _, vacancy := range vacancies.Vacancies {
 		if _, err := stmt.Exec(
@@ -96,39 +118,45 @@ func main() {
 }
 
 // получает вакансии и мапит их в Items-структуру
-func getVacansies() (*Items, error) {
-	resp := sendRequest(0)
+func getVacansies(lastUpdateTime string) (*Items, error) {
+	resp, err := sendRequest(0, lastUpdateTime)
+	if err != nil {
+		return nil, err
+	}
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf(err)
+		log.Fatal(err)
 
 		return nil, err
 	}
 
 	var vacancies Items
-	json.Unmarshal(body, &vacancies)
+	_ = json.Unmarshal(body, &vacancies)
 
 	currentPage := vacancies.CurrentPage
 	if currentPage != 0 {
-		return _, 
+		return nil, errors.New("Невозможно распрасить страницу!")
 	}
 	countPages := vacancies.Pages
 
 	var tempItems Items
 	for i := 1; i < countPages; i++ {
-		resp := sendRequest(i)
+		resp, err := sendRequest(i, lastUpdateTime)
+		if err != nil {
+			return nil, err
+		}
 		defer resp.Body.Close()
 
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			log.Printf(err)
+			log.Fatal(err)
 
 			return nil, err
 		}
 
-		json.Unmarshal(body, &tempItems)
+		_ = json.Unmarshal(body, &tempItems)
 
 		vacancies.Vacancies = append(vacancies.Vacancies, tempItems.Vacancies...)
 	}
@@ -137,10 +165,12 @@ func getVacansies() (*Items, error) {
 }
 
 // Отправляет запрос к hh на получение вакансий
-func sendRequest(page int) *http.Response {
+func sendRequest(page int, dateFrom string) (*http.Response, error) {
 	url, exists := os.LookupEnv("HH_URL")
 	if !exists {
 		log.Fatalln("head hanter base url not found")
+
+		return nil, errors.New("head hanter base url not found")
 	}
 
 	req, _ := http.NewRequest(
@@ -157,33 +187,19 @@ func sendRequest(page int) *http.Response {
 	q.Add("employment", "part")       // или частичная
 	q.Add("schedule", "remote")       // тип работы - удалённая
 	q.Add("page", strconv.Itoa(page)) // страница
+	if dateFrom != "" {
+		q.Add("date_from", dateFrom) // ограничивает дату снизу
+	}
 	req.URL.RawQuery = q.Encode()
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 
-	checkErr(err)
-
-	return resp
-}
-
-// checkErr ...
-func checkErr(err error) {
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
+
+		return nil, err
 	}
-}
 
-// NewRedisClient ...
-func NewRedisClient() *redis.Client {
-	client := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
-		Password: "",
-		DB:       0,
-	})
-
-	_, err := client.Ping().Result()
-	checkErr(err)
-
-	return client
+	return resp, nil
 }
