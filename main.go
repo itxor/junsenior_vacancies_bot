@@ -55,11 +55,26 @@ func init() {
 }
 
 func main() {
-	db, err := sql.Open("mysql", "junsenior:junsenior@/vacancies")
+	redisClient, err := redis_helper.NewRedisClient()
 	if err != nil {
 		panic(err)
 	}
 
+	databaseUrl, exists := os.LookupEnv("DATABASE_URL")
+	if !exists {
+		log.Fatalln("database url is not set")
+		panic("database url is not set")
+	}
+	databaseDriver, exists := os.LookupEnv("DATABASE_DRIVER")
+	if !exists {
+		log.Fatalln("database driver is not set")
+		panic("database url is not set")
+	}
+
+	db, err := sql.Open(databaseDriver, databaseUrl)
+	if err != nil {
+		panic(err)
+	}
 	defer db.Close()
 
 	tx, err := db.Begin()
@@ -68,7 +83,26 @@ func main() {
 	}
 	defer tx.Rollback() // Игнорируется, если в последующем изменения зафиксированы через Commit
 
-	stmt, err := tx.Prepare("INSERT INTO vacancies(" +
+	data := "IF NOT EXISTS (SELECT * FROM vacancies WHERE id = (?))" +
+		"BEGIN " +
+		"INSERT INTO vacancies(" +
+		"id, " +
+		"name, " +
+		"place, " +
+		"salary_from, " +
+		"salary_to, " +
+		"salary_currency, " +
+		"salary_gross, " +
+		"publiched_at, " +
+		"archived, " +
+		"url, " +
+		"employer_name" +
+		") VALUES (?,?,?,?,?,?,?,?,?,?,?) " +
+		"END"
+	fmt.Println(data)
+
+	stmt, err := tx.Prepare("IF NOT EXISTS (SELECT * FROM vacancies WHERE id = (?)) " +
+		"INSERT INTO vacancies(" +
 		"id, " +
 		"name, " +
 		"place, " +
@@ -86,16 +120,17 @@ func main() {
 	}
 	defer stmt.Close()
 
-	lastUpdateTime := redis_helper.GetRedisTimeStamp()
+	lastUpdateTime := redisClient.GetRedisTimeStamp()
 	vacancies, err := getVacansies(lastUpdateTime)
 	if err != nil {
 		panic(err)
 	}
-	redis_helper.SetRedisTimeStamp()
+	redisClient.SetRedisTimeStamp()
 
 	for _, vacancy := range vacancies.Vacancies {
 		if _, err := stmt.Exec(
-			vacancy.ID,
+			vacancy.ID, // для поиска уже существующего значения
+			vacancy.ID, // для записи в базу
 			vacancy.Name,
 			vacancy.Area.Place,
 			vacancy.Salary.From,
@@ -135,8 +170,7 @@ func getVacansies(lastUpdateTime string) (*Items, error) {
 	var vacancies Items
 	_ = json.Unmarshal(body, &vacancies)
 
-	currentPage := vacancies.CurrentPage
-	if currentPage != 0 {
+	if vacancies.CurrentPage != 0 {
 		return nil, errors.New("Невозможно распрасить страницу!")
 	}
 	countPages := vacancies.Pages
