@@ -8,7 +8,6 @@ import (
 	"log"
 	"os"
 	"parser/db/models"
-	_redis "parser/helpers/redis"
 	"parser/services"
 	"strconv"
 	"strings"
@@ -21,40 +20,47 @@ func init() {
 }
 
 func main() {
-	redisClient, err := _redis.NewRedisClient()
-	if err != nil {
-		panic(err)
-	}
-
+	//redisClient, err := _redis.NewRedisClient()
+	//if err != nil {
+	//	panic(err)
+	//}
+	//
 	vacancyService, err := services.CreateVacancyService()
 	if err != nil {
 		panic(err)
 	}
+	//
+	//lastUpdateTime := redisClient.GetRedisTimeStamp()
+	//vacancies, err := vacancyService.GetVacancies(lastUpdateTime)
+	//if err != nil {
+	//	panic(err)
+	//}
+	//
+	//var newVacanciesCount int = 0
+	//for _, vacancy := range vacancies.Vacancies {
+	//	isUnique, err := vacancyService.SaveVacancy(vacancy)
+	//	if err != nil {
+	//		log.Fatal(err)
+	//	}
+	//
+	//	if isUnique {
+	//		newVacanciesCount++
+	//		//err := sendToChannel(prepareMessage(&vacancy))
+	//		//if err != nil {
+	//		//	panic(err)
+	//		//}
+	//	}
+	//}
+	//
+	//if newVacanciesCount != 0 {
+	//	redisClient.SetRedisTimeStamp()
+	//}
 
-	lastUpdateTime := redisClient.GetRedisTimeStamp()
-	vacancies, err := vacancyService.GetVacancies(lastUpdateTime)
+	vacancy, _ := vacancyService.GetVacancyById(26673199)
+	msg := prepareMessage(vacancy)
+	err = sendToChannel(msg)
 	if err != nil {
 		panic(err)
-	}
-
-	var newVacanciesCount int = 0
-	for _, vacancy := range vacancies.Vacancies {
-		isUnique, err := vacancyService.SaveVacancy(vacancy)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		if isUnique {
-			newVacanciesCount++
-			err := sendToChannel(prepareMessage(&vacancy))
-			if err != nil {
-				panic(err)
-			}
-		}
-	}
-
-	if newVacanciesCount != 0 {
-		redisClient.SetRedisTimeStamp()
 	}
 }
 
@@ -79,6 +85,8 @@ func sendToChannel(msg string) error {
 		int64(chatId),
 		msg,
 	)
+
+	message.ParseMode = tgbotapi.ModeHTML
 	_, err = bot.Send(message)
 	if err != nil {
 		log.Fatal(err)
@@ -89,27 +97,34 @@ func sendToChannel(msg string) error {
 	return nil
 }
 
-func prepareMessage(vacansy *models.Vacancy) string {
+func prepareMessage(vacancy *models.Vacancy) string {
 	var str strings.Builder
-	str.WriteString(vacansy.Name + "\n")
+	str.WriteString("<b>" + vacancy.Name)
+	str.WriteString(" в " + vacancy.Employer.Name + "</b>\n")
 
-	if vacansy.Salary.From == 0 && vacansy.Salary.To == 0 {
-		str.WriteString("Зарплата: не указана\n")
-	} else if vacansy.Salary.From != 0 && vacansy.Salary.To == 0 {
-		str.WriteString("Зарплата: от " + strconv.Itoa(vacansy.Salary.From) + "\n")
-	} else if vacansy.Salary.To != 0 && vacansy.Salary.From == 0 {
-		str.WriteString("Зарплата: до " + strconv.Itoa(vacansy.Salary.To) + "\n")
-	} else {
+	if vacancy.Salary.From != 0 && vacancy.Salary.To == 0 {
+		str.WriteString("Зарплата: от " + strconv.Itoa(vacancy.Salary.From) + "\n")
+	} else if vacancy.Salary.To != 0 && vacancy.Salary.From == 0 {
+		str.WriteString("Зарплата: до " + strconv.Itoa(vacancy.Salary.To) + "\n")
+	} else if vacancy.Salary.From != 0 && vacancy.Salary.To != 0 {
 		str.WriteString("Зарплата: " +
-			"от " + strconv.Itoa(vacansy.Salary.From) +
-			" до " + strconv.Itoa(vacansy.Salary.To) +
+			"от " + strconv.Itoa(vacancy.Salary.From) +
+			" до " + strconv.Itoa(vacancy.Salary.To) +
 			"\n",
 		)
 	}
 
-	str.WriteString(vacansy.Snippet.Description + "\n")
-	str.WriteString("Требования: " + vacansy.Snippet.Requirements + "\n")
-	str.WriteString(vacansy.Employer.Name + "\n")
+	if vacancy.Snippet.Description != "" {
+		str.WriteString("\n" + vacancy.Snippet.Description + "\n")
+	}
+
+	if vacancy.Snippet.Requirements != "" {
+		str.WriteString("Требования: " + vacancy.Snippet.Requirements + "\n")
+	}
+
+	str.WriteString("<b><a href='" +
+		vacancy.URL +
+		"'>Откликнуться</a></b>")
 
 	return str.String()
 }

@@ -45,7 +45,7 @@ func (database *VacancyRepository) InsertVacancy(vacancy models.Vacancy) (bool, 
 	defer db.Close()
 
 	stmt, err := db.Prepare("INSERT INTO vacancies( " +
-		"id, name, place, salary_from, salary_to, salary_currency, salary_gross, publiched_at, archived, " +
+		"id, name, place, salary_from, salary_to, salary_currency, salary_gross, published_at, archived, " +
 		"url, employer_name) " +
 		"SELECT ?,?,?,?,?,?,?,?,?,?,? " +
 		"WHERE NOT EXISTS (SELECT * FROM vacancies WHERE id = (?))")
@@ -82,4 +82,57 @@ func (database *VacancyRepository) InsertVacancy(vacancy models.Vacancy) (bool, 
 	} else {
 		return false, nil
 	}
+}
+
+func (database *VacancyRepository) GetVacancyById(id int) (*models.Vacancy, error) {
+	db, err := sql.Open(
+		database.databaseDriver,
+		database.databaseURL,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query(
+		"SELECT id, "+
+			"name, "+
+			"place, "+
+			"salary_from, "+
+			"salary_to, "+
+			"salary_currency, "+
+			"salary_gross, "+
+			"published_at, "+
+			"archived, "+
+			"url, "+
+			"employer_name "+
+			" FROM vacancies WHERE id=?",
+		id,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	rows.Next()
+
+	vacancy := &models.Vacancy{}
+	if err = rows.Scan(
+		&vacancy.ID,
+		&vacancy.Name,
+		&vacancy.Area.Place,
+		&vacancy.Salary.From,
+		&vacancy.Salary.To,
+		&vacancy.Salary.Currency,
+		&vacancy.Salary.Gross,
+		&vacancy.PublishedAt,
+		&vacancy.Archived,
+		&vacancy.URL,
+		&vacancy.Employer.Name,
+	); err != nil {
+		log.Fatal(err)
+
+		return nil, err
+	}
+
+	return vacancy, nil
 }

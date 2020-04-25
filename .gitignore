@@ -2,3 +2,4 @@
 main
 **/*.log
 .vscode
+.idea/

@@ -80,9 +80,12 @@ func (vs *VacancyService) GetVacancies(lastUpdateTime string) (*Items, error) {
 	return &vacancies, nil
 }
 
-// SaveVacancy ...
 func (vs *VacancyService) SaveVacancy(vacancy models.Vacancy) (bool, error) {
 	return vs.vacancyRepository.InsertVacancy(vacancy)
+}
+
+func (vs *VacancyService) GetVacancyById(id int) (*models.Vacancy, error) {
+	return vs.vacancyRepository.GetVacancyById(id)
 }
 
 // Отправляет запрос к hh на получение вакансий
