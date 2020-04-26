@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"parser/consts"
 	"parser/db/models"
 	"parser/db/repositories"
 	"strconv"
@@ -106,11 +107,16 @@ func sendRequest(page int, dateFrom string) (*http.Response, error) {
 
 	q := req.URL.Query()
 	// запрос на слова в названии или описании вакансии
-	q.Add("text", "NAME:(PHP OR Symfony OR Laravel) OR DESCRIPTION:(PHP OR Symfony OR Laravel)")
+	q.Add("text", "(NAME:(PHP OR Symfony OR Laravel) "+
+		"OR DESCRIPTION:(PHP OR Symfony OR Laravel)) "+
+		"NOT Bitrix NOT BITRIX NOT 1C NOT 1С NOT 1c")
 	q.Add("employment", "full")       // тип занятости - полная
 	q.Add("employment", "part")       // или частичная
 	q.Add("schedule", "remote")       // тип работы - удалённая
 	q.Add("page", strconv.Itoa(page)) // страница
+	q.Add("specialization", strconv.Itoa( // профобласть
+		consts.ProgrammignSpecializationId,
+	))
 	if dateFrom != "" {
 		q.Add("date_from", dateFrom) // ограничивает дату снизу
 	}
