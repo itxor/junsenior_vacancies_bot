@@ -33,9 +33,9 @@ func InitTelegramBot() (*TelegramBot, error) {
 	return telegramBot, nil
 }
 
-func (tg *TelegramBot) SendHTMLMessage(msg string, chatId int64) error {
-	message := tgbotapi.NewMessage(
-		chatId,
+func (tg *TelegramBot) SendHTMLMessage(msg string, channelName string) error {
+	message := tgbotapi.NewMessageToChannel(
+		channelName,
 		msg,
 	)
 

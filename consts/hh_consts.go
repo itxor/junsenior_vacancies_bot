@@ -1,5 +1,10 @@
 package consts
 
 var (
-	ProgrammignSpecializationId = 1
+	PROGRAMMING_SPECIALIZATION_ID = 1
+
+	CURRENCY_KZT = "KZT"
+	CURRENCY_RUB = "RUR"
+	CURRENCY_EUR = "EUR"
+	CURRENCY_USD = "USD"
 )

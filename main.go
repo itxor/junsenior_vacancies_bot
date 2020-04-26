@@ -1,16 +1,28 @@
 package main
 
 import (
+	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/joho/godotenv"
 	"log"
+	"os"
 	_redis "parser/helpers/redis"
 	"parser/services"
+	"time"
 )
 
 func init() {
-	if err := godotenv.Load(); err != nil {
+	t := time.Now()
+	formatted := fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d",
+		t.Year(), t.Month(), t.Day(),
+		t.Hour(), t.Minute(), t.Second())
+	fmt.Println("Start time: " + formatted)
+
+	if err := godotenv.Load(
+		os.ExpandEnv("$GOPATH/src/github.com/itxor/junsenior_vacancies_bot/.env"),
+	); err != nil {
 		log.Println("No .env file found")
+		panic(err)
 	}
 }
 
@@ -31,6 +43,11 @@ func main() {
 	}
 
 	lastUpdateTime := redisClient.GetRedisTimeStamp()
+	if lastUpdateTime == "" {
+		lastUpdateTime = time.Now().Format("YYYY-MM-DD")
+	}
+	fmt.Printf("Redis timestamp: %s\n", lastUpdateTime)
+
 	vacancies, err := vacancyService.GetVacancies(lastUpdateTime)
 	if err != nil {
 		panic(err)

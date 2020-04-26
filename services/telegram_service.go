@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"parser/consts"
 	"parser/db/models"
 	"parser/helpers/telegram"
 	"strconv"
@@ -11,8 +12,8 @@ import (
 )
 
 type TelegramService struct {
-	bot *telegram.TelegramBot
-	chatId int64
+	bot         *telegram.TelegramBot
+	channelName string
 }
 
 func CreateTelegramService() (*TelegramService, error) {
@@ -30,12 +31,9 @@ func CreateTelegramService() (*TelegramService, error) {
 		return nil, err
 	}
 
-	tempId, _ := strconv.Atoi(telegramChatID)
-	id := int64(tempId)
-
 	service := &TelegramService{
-		bot: bot,
-		chatId: id,
+		bot:         bot,
+		channelName: telegramChatID,
 	}
 
 	return service, nil
@@ -43,7 +41,7 @@ func CreateTelegramService() (*TelegramService, error) {
 
 func (ts *TelegramService) SendMessageByVacancy(vacancy *models.Vacancy) error {
 	msg := prepareMessage(vacancy)
-	err := ts.bot.SendHTMLMessage(msg, ts.chatId)
+	err := ts.bot.SendHTMLMessage(msg, ts.channelName)
 	if err != nil {
 		log.Fatal(err)
 
@@ -58,16 +56,30 @@ func prepareMessage(vacancy *models.Vacancy) string {
 	str.WriteString("<b>" + vacancy.Name)
 	str.WriteString(" в " + vacancy.Employer.Name + "</b>\n")
 
-	if vacancy.Salary.From != 0 && vacancy.Salary.To == 0 {
-		str.WriteString("Зарплата: от " + strconv.Itoa(vacancy.Salary.From) + "\n")
-	} else if vacancy.Salary.To != 0 && vacancy.Salary.From == 0 {
-		str.WriteString("Зарплата: до " + strconv.Itoa(vacancy.Salary.To) + "\n")
-	} else if vacancy.Salary.From != 0 && vacancy.Salary.To != 0 {
-		str.WriteString("Зарплата: " +
-			"от " + strconv.Itoa(vacancy.Salary.From) +
-			" до " + strconv.Itoa(vacancy.Salary.To) +
-			"\n",
-		)
+	currency := ""
+	if vacancy.Salary.Currency == consts.CURRENCY_RUB {
+		currency = "₽"
+	} else if vacancy.Salary.Currency == consts.CURRENCY_USD {
+		currency = "$"
+	} else if vacancy.Salary.Currency == consts.CURRENCY_EUR {
+		currency = "€"
+	} else if vacancy.Salary.Currency == consts.CURRENCY_KZT {
+		currency = "₸"
+	}
+
+	if currency != "" {
+		if vacancy.Salary.From != 0 && vacancy.Salary.To == 0 {
+			str.WriteString("Зарплата: от " + strconv.Itoa(vacancy.Salary.From))
+		} else if vacancy.Salary.To != 0 && vacancy.Salary.From == 0 {
+			str.WriteString("Зарплата: до " + strconv.Itoa(vacancy.Salary.To))
+		} else if vacancy.Salary.From != 0 && vacancy.Salary.To != 0 {
+			str.WriteString("Зарплата: " +
+				"от " + strconv.Itoa(vacancy.Salary.From) +
+				" до " + strconv.Itoa(vacancy.Salary.To),
+			)
+		}
+
+		str.WriteString(" " + currency + "\n")
 	}
 
 	if vacancy.Snippet.Description != "" {
@@ -82,5 +94,14 @@ func prepareMessage(vacancy *models.Vacancy) string {
 		vacancy.URL +
 		"'>Откликнуться</a></b>")
 
-	return str.String()
+	return replaceCustomTags(
+		str.String(),
+	)
+}
+
+func replaceCustomTags(msg string) string {
+	msg = strings.Replace(msg, "<highlighttext>", "", -1)
+	msg = strings.Replace(msg, "</highlighttext>", "", -1)
+
+	return msg
 }

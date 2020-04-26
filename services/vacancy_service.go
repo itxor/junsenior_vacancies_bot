@@ -10,6 +10,7 @@ import (
 	"parser/consts"
 	"parser/db/models"
 	"parser/db/repositories"
+	"reflect"
 	"strconv"
 )
 
@@ -52,6 +53,7 @@ func (vs *VacancyService) GetVacancies(lastUpdateTime string) (*Items, error) {
 
 	var vacancies Items
 	_ = json.Unmarshal(body, &vacancies)
+	vacancies = *(mergeVacancies(&vacancies))
 
 	if vacancies.CurrentPage != 0 {
 		return nil, errors.New("Невозможно распрасить страницу!")
@@ -74,6 +76,7 @@ func (vs *VacancyService) GetVacancies(lastUpdateTime string) (*Items, error) {
 		}
 
 		_ = json.Unmarshal(body, &tempItems)
+		tempItems = *(mergeVacancies(&tempItems))
 
 		vacancies.Vacancies = append(vacancies.Vacancies, tempItems.Vacancies...)
 	}
@@ -107,15 +110,15 @@ func sendRequest(page int, dateFrom string) (*http.Response, error) {
 
 	q := req.URL.Query()
 	// запрос на слова в названии или описании вакансии
-	q.Add("text", "(NAME:(PHP OR Symfony OR Laravel) "+
-		"OR DESCRIPTION:(PHP OR Symfony OR Laravel)) "+
-		"NOT Bitrix NOT BITRIX NOT 1C NOT 1С NOT 1c")
+	q.Add("text", "NAME:(PHP OR Symfony OR Laravel OR Backend OR Back-end OR BackEnd) "+
+		" AND DESCRIPTION:(PHP OR php) "+
+		"NOT Bitrix NOT BITRIX NOT 1C NOT 1С NOT 1c ")
 	q.Add("employment", "full")       // тип занятости - полная
 	q.Add("employment", "part")       // или частичная
 	q.Add("schedule", "remote")       // тип работы - удалённая
 	q.Add("page", strconv.Itoa(page)) // страница
 	q.Add("specialization", strconv.Itoa( // профобласть
-		consts.ProgrammignSpecializationId,
+		consts.PROGRAMMING_SPECIALIZATION_ID,
 	))
 	if dateFrom != "" {
 		q.Add("date_from", dateFrom) // ограничивает дату снизу
@@ -132,4 +135,83 @@ func sendRequest(page int, dateFrom string) (*http.Response, error) {
 	}
 
 	return resp, nil
+}
+
+func mergeVacancies(items *Items) *Items {
+	vacancies := items.Vacancies
+
+	excludedKeys := make([]int, 0)
+	doubles := make(map[int][]int)
+	withoutDoubleVacancies := make([]models.Vacancy, 0)
+
+	for i := 0; i < len(vacancies); i++ {
+		if itemExists(excludedKeys, i) {
+			continue
+		} else {
+			excludedKeys = append(excludedKeys, i)
+		}
+
+		for j := 0; j < len(vacancies); j++ {
+			if itemExists(excludedKeys, j) {
+				continue
+			}
+
+			if isDouble(vacancies, i, j) {
+				excludedKeys = append(excludedKeys, j)
+				if len(doubles[i]) == 0 {
+					doubles[i] = make([]int, 0)
+				}
+				doubles[i] = append(doubles[i], j)
+				continue
+			}
+		}
+
+		if _, ok := doubles[i]; !ok {
+			withoutDoubleVacancies = append(withoutDoubleVacancies, vacancies[i])
+		}
+	}
+
+	if len(doubles) != 0 {
+
+		for uniqueIndex, doublesIndexes := range doubles {
+			mergedPlace := vacancies[uniqueIndex].Area.Place + ", "
+			for index, doublesIndex := range doublesIndexes {
+				mergedPlace += vacancies[doublesIndex].Area.Place
+				if index != len(doublesIndexes)-1 {
+					mergedPlace += ", "
+				}
+			}
+
+			vacancies[uniqueIndex].Area.Place = mergedPlace
+			withoutDoubleVacancies = append(withoutDoubleVacancies, vacancies[uniqueIndex])
+		}
+
+		items.Vacancies = withoutDoubleVacancies
+	}
+
+	return items
+}
+
+func isDouble(vacancies []models.Vacancy, i int, j int) bool {
+	return vacancies[i].Name == vacancies[j].Name &&
+		vacancies[i].Salary.From == vacancies[j].Salary.From &&
+		vacancies[i].Salary.To == vacancies[j].Salary.To &&
+		vacancies[i].Salary.Currency == vacancies[j].Salary.Currency &&
+		vacancies[i].Employer.Name == vacancies[j].Employer.Name
+}
+
+func itemExists(slice interface{}, item interface{}) bool {
+	s := reflect.ValueOf(slice)
+
+	if s.Kind() != reflect.Slice {
+		panic("Invalid data-type")
+	}
+
+	for i := 0; i < s.Len(); i++ {
+		if s.Index(i).Interface() == item {
+			return true
+		}
+	}
+
+	return false
 }
