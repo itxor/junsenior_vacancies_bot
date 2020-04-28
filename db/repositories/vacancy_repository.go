@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"database/sql"
-	"errors"
 	"log"
 	"os"
 	"parser/db/models"
@@ -17,14 +16,10 @@ func InitDB() (*VacancyRepository, error) {
 	databaseUrl, exists := os.LookupEnv("DATABASE_URL")
 	if !exists {
 		log.Fatalln("database url is not set")
-
-		return nil, errors.New("database driver is not set")
 	}
 	databaseDriver, exists := os.LookupEnv("DATABASE_DRIVER")
 	if !exists {
 		log.Fatalln("database driver is not set")
-
-		return nil, errors.New("database driver is not set")
 	}
 
 	return &VacancyRepository{

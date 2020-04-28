@@ -18,8 +18,12 @@ func init() {
 		t.Hour(), t.Minute(), t.Second())
 	fmt.Println("Start time: " + formatted)
 
+	path := ".env"
+	if _, err := os.Stat("$GOPATH/src/github.com/itxor/junsenior_vacancies_bot/.env"); err == nil {
+		path = "$GOPATH/src/github.com/itxor/junsenior_vacancies_bot/.env"
+	}
 	if err := godotenv.Load(
-		os.ExpandEnv("$GOPATH/src/github.com/itxor/junsenior_vacancies_bot/.env"),
+		os.ExpandEnv(path),
 	); err != nil {
 		log.Println("No .env file found")
 		panic(err)
@@ -48,18 +52,17 @@ func main() {
 	}
 	fmt.Printf("Redis timestamp: %s\n", lastUpdateTime)
 
-	vacancies, err := vacancyService.GetVacancies(lastUpdateTime)
+	vacancies, err := vacancyService.GetVacancies("")
 	if err != nil {
 		panic(err)
 	}
+	fmt.Print(len(vacancies.Vacancies))
 
 	var newVacanciesCount = 0
 	for _, vacancy := range vacancies.Vacancies {
 		isUnique, err := vacancyService.SaveVacancy(vacancy)
 		if err != nil {
 			log.Fatal(err)
-
-			continue
 		}
 
 		if isUnique {

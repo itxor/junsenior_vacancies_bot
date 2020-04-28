@@ -1,7 +1,6 @@
 package telegram
 
 import (
-	"errors"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"log"
 	"os"
@@ -15,8 +14,6 @@ func InitTelegramBot() (*TelegramBot, error) {
 	telegramToken, isExists := os.LookupEnv("TELEGRAM_BOT_TOKEN")
 	if !isExists {
 		log.Fatalln("telegram token not found")
-
-		return nil, errors.New("telegram token not found")
 	}
 
 	bot, err := tgbotapi.NewBotAPI(telegramToken)
