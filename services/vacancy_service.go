@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"parser/db/repositories"
 	"reflect"
 	"strconv"
+	"sync"
 )
 
 // Items ...
@@ -38,58 +40,89 @@ func CreateVacancyService() (*VacancyService, error) {
 
 // получает вакансии и мапит их в Items-структуру
 func (vs *VacancyService) GetVacancies(lastUpdateTime string) (*Items, error) {
-	resp, err := sendRequest(0, lastUpdateTime)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-
-		return nil, err
-	}
-
+	var wg sync.WaitGroup
 	var vacancies Items
-	_ = json.Unmarshal(body, &vacancies)
-	vacancies = *(mergeVacancies(&vacancies))
+
+	itemsCh := make(chan *Items, 0)
+	wg.Add(1)
+	go getAndUnmarshallVacancyPage(
+		0,
+		lastUpdateTime,
+		itemsCh,
+		func() { wg.Done() },
+	)
+	waitWgAndCloseChannel(itemsCh, &wg)
+	vacancies = *(<-itemsCh)
 
 	if vacancies.CurrentPage != 0 {
 		return nil, errors.New("Невозможно распрасить страницу!")
 	}
-	countPages := vacancies.Pages
 
-	var tempItems Items
-	for i := 1; i < countPages; i++ {
-		resp, err := sendRequest(i, lastUpdateTime)
-		if err != nil {
-			return nil, err
-		}
-		defer resp.Body.Close()
+	itemsCh = make(chan *Items, vacancies.Pages)
+	for i := 1; i < vacancies.Pages; i++ {
+		wg.Add(1)
+		go getAndUnmarshallVacancyPage(
+			i,
+			lastUpdateTime,
+			itemsCh,
+			func() { wg.Done() },
+		)
+	}
 
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			log.Fatal(err)
+	waitWgAndCloseChannel(itemsCh, &wg)
 
-			return nil, err
-		}
-
-		_ = json.Unmarshal(body, &tempItems)
-		tempItems = *(mergeVacancies(&tempItems))
-
-		vacancies.Vacancies = append(vacancies.Vacancies, tempItems.Vacancies...)
+	for items := range itemsCh {
+		vacancies.Vacancies = append(vacancies.Vacancies, (*(items)).Vacancies...)
 	}
 
 	return &vacancies, nil
 }
 
+func waitWgAndCloseChannel(itemsCh chan *Items, wg *sync.WaitGroup) {
+	go func() {
+		defer close(itemsCh)
+		wg.Wait()
+	}()
+}
 func (vs *VacancyService) SaveVacancy(vacancy models.Vacancy) (bool, error) {
 	return vs.vacancyRepository.InsertVacancy(vacancy)
 }
 
 func (vs *VacancyService) GetVacancyById(id int) (*models.Vacancy, error) {
 	return vs.vacancyRepository.GetVacancyById(id)
+}
+
+func getAndUnmarshallVacancyPage(
+	page int,
+	lastUpdateTime string,
+	itemsCh chan *Items,
+	onExit func(),
+) {
+	defer onExit()
+
+	resp, err := sendRequest(page, lastUpdateTime)
+	if err != nil {
+		itemsCh <- nil
+		log.Fatal(err)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		itemsCh <- nil
+		log.Fatal(err)
+		return
+	}
+
+	var tempItems Items
+	_ = json.Unmarshal(body, &tempItems)
+
+	fmt.Printf("Страница %d обработана\n", page)
+	itemsCh <- mergeVacancies(&tempItems)
+	fmt.Printf("Данные записаны в канал\n")
+
+	return
 }
 
 // Отправляет запрос к hh на получение вакансий
