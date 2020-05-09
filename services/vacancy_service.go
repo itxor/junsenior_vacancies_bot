@@ -53,6 +53,7 @@ func (vs *VacancyService) GetVacancies(lastUpdateTime string) (*Items, error) {
 	)
 	waitWgAndCloseChannel(itemsCh, &wg)
 	vacancies = *(<-itemsCh)
+	fmt.Printf("Количество новых вакансий: %d\n", len(vacancies.Vacancies))
 
 	if vacancies.CurrentPage != 0 {
 		return nil, errors.New("Невозможно распрасить страницу!")

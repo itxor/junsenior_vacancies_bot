@@ -49,15 +49,15 @@ func (redis *Redis) GetRedisTimeStamp() string {
 }
 
 func (redis *Redis) SetRedisTimeStamp() {
-	err := redis.client.Set("last-vacancies-update", getCurrentDateStr(), 0).Err()
+	err := redis.client.Set("last-vacancies-update", redis.GetCurrentDateStr(), 0).Err()
 	if err != nil {
 		panic(err)
 	}
 }
 
-func getCurrentDateStr() string {
+func (redis *Redis) GetCurrentDateStr() string {
 	year, month, day := time.Now().Date()
 	var intMonth = int(month)
 
-	return strconv.Itoa(year) + "-" + fmt.Sprintf("%02d", intMonth) + "-" + strconv.Itoa(day)
+	return strconv.Itoa(year) + "-" + fmt.Sprintf("%02d", intMonth) + "-" + fmt.Sprintf("%02d", day)
 }
